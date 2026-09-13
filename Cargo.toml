@@ -1,0 +1,20 @@
+[workspace]
+
+[package]
+name = "installer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+viewkit = { path = "../../libraries/viewkit" }
+
+[[bin]]
+name = "installer"
+path = "src/main.rs"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

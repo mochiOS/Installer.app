@@ -1,0 +1,40 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="bg" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#F7F7F8"/>
+            <stop offset="1" stop-color="#E8E8EB"/>
+        </linearGradient>
+
+        <linearGradient id="inner" x1="512" y1="244" x2="512" y2="780" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#FFFFFF"/>
+            <stop offset="1" stop-color="#F0F0F2"/>
+        </linearGradient>
+
+        <filter id="softShadow" x="160" y="170" width="704" height="704" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="18" stdDeviation="28" flood-color="#000000" flood-opacity="0.12"/>
+        </filter>
+
+        <clipPath id="clip">
+            <rect width="1024" height="1024" rx="224"/>
+        </clipPath>
+    </defs>
+
+    <g clip-path="url(#clip)">
+        <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+
+        <path d="M0 256H1024" stroke="#ACACAC" stroke-width="8"/>
+        <path d="M0 512H1024" stroke="#ACACAC" stroke-width="8"/>
+        <path d="M0 768H1024" stroke="#ACACAC" stroke-width="8"/>
+
+        <path d="M256 0V1024" stroke="#ACACAC" stroke-width="8"/>
+        <path d="M512 0V1024" stroke="#ACACAC" stroke-width="8"/>
+        <path d="M768 0V1024" stroke="#ACACAC" stroke-width="8"/>
+
+        <path d="M0 0L1024 1024" stroke="#DDDEE2" stroke-width="8"/>
+        <path d="M1024 0L0 1024" stroke="#DDDEE2" stroke-width="8"/>
+
+        <ellipse cx="512" cy="512" rx="256" ry="256" stroke="#DDDEE2" stroke-width="10"/>
+
+        <rect x="0.5" y="0.5" width="1023" height="1023" rx="223.5" stroke="#D2D3D8"/>
+    </g>
+</svg>

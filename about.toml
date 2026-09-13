@@ -1,0 +1,11 @@
+name = "Installer"
+bundle_id = "org.mochios.installer"
+version = "0.1.0"
+developer = "mochiOS"
+entry = "entry.elf"
+description = "Installer for mochiOS"
+icon = "appicon.svg"
+
+resources = [
+	"appicon.svg",
+]
