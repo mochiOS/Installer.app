@@ -1,6 +1,7 @@
 format = 1
 
 [package]
+provenance = "built-in"
 id = "org.mochios.installer"
 name = "Installer"
 version = "0.1.0"
