@@ -7,7 +7,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-viewkit = { path = "../../libraries/viewkit" }
+appcore = { package = "mochios-appcore", path = "../../tools/devkit/crates/appcore" }
 
 [[bin]]
 name = "installer"
