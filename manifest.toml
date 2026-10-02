@@ -18,7 +18,7 @@ icon = "appicon.svg"
 resources = ["appicon.svg"]
 
 [[binary]]
-path = "/applications/Installer.app/entry.elf"
+path = "/system/applications/Installer.app/entry.elf"
 kind = "application"
 requires = [
 	"ipc.client",
