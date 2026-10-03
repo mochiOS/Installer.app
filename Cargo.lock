@@ -911,7 +911,7 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.189"
+version = "0.2.190"
 
 [[package]]
 name = "libloading"
@@ -1041,6 +1041,7 @@ name = "mochios-appcore"
 version = "0.1.0"
 dependencies = [
  "mochi-user-platform",
+ "mochios-workspace-protocol",
  "viewkit",
 ]
 
