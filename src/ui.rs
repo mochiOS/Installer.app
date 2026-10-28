@@ -106,15 +106,20 @@ impl InstallerView {
                 let selected = model.drafts[category.index()];
                 let theme = self.theme.get();
                 let choice = |label: &str, allow: bool| {
+                    let active = selected == Some(allow);
                     core.button(label, Action::Choose(allow))
                         .size(ButtonSize::Large)
-                        .accessibility_selected(selected == Some(allow))
-                        .style(if selected == Some(allow) { ButtonStyle::Primary } else { ButtonStyle::Standard })
+                        .content(VStack::new().alignment(StackAlignment::Stretch).distribution(StackDistribution::Center)
+                            .child(Text::body(label).alignment(TextAlignment::Center)
+                                .color(if active { Color::WHITE } else { theme.colors.text_primary })))
+                        .accessibility_label(label)
+                        .accessibility_selected(active)
+                        .style(if active { ButtonStyle::Primary } else { ButtonStyle::Standard })
                         .layout()
-                        .frame(theme.spacing.giant * 3.0, theme.spacing.giant)
+                        .frame(theme.spacing.giant * 3.0, theme.spacing.huge)
                 };
                 let choices: Box<dyn View> = if compact {
-                    Box::new(VStack::new().gap(StackGap::Large)
+                    Box::new(VStack::new().gap(StackGap::Medium)
                         .child(choice("Allow", true))
                         .child(choice("Don’t Allow", false)))
                 } else {
@@ -122,21 +127,17 @@ impl InstallerView {
                         .child(choice("Allow", true))
                         .child(choice("Don’t Allow", false)))
                 };
-                let selection = VStack::new()
-                    .alignment(StackAlignment::Center)
-                    .distribution(StackDistribution::Center)
-                    .gap(StackGap::Large)
-                    .child(Text::label("Choose whether to share this data."))
-                    .child(choices)
-                    .child(self.metadata(match selected {
-                        Some(true) => "Allow selected. Continue to confirm.",
-                        Some(false) => "Don’t Allow selected. Continue to confirm.",
-                        None => "Select an option to continue.",
-                    }))
-                    .layout().height(theme.spacing.giant * 4.0);
-                let mut content = self.heading(model.page.title(), docs.text(&docs.disclosure(category, "en").summary_file))
-                    .child(selection)
-                    .child(HStack::new().child(core.button(if model.details[category.index()] { "Hide Details" } else { "Show Details" }, Action::Details).toolbar()).child(Spacer::new()));
+                let mut content = VStack::new()
+                    .alignment(StackAlignment::Stretch)
+                    .gap(StackGap::ExtraLarge)
+                    .child(VStack::new().alignment(StackAlignment::Stretch).gap(StackGap::Medium)
+                        .child(Text::styled(model.page.title(), TextRole::TitleLarge).alignment(TextAlignment::Center))
+                        .child(Text::body(docs.text(&docs.disclosure(category, "en").summary_file))
+                            .alignment(TextAlignment::Center).color(theme.colors.text_secondary)))
+                    .child(HStack::new().child(Spacer::new()).child(choices).child(Spacer::new()))
+                    .child(HStack::new().child(Spacer::new())
+                        .child(core.button(if model.details[category.index()] { "Hide Details" } else { "Show Details" }, Action::Details).toolbar())
+                        .child(Spacer::new()));
                 if model.details[category.index()] {
                     for field in &docs.disclosure(category, "en").fields {
                         content = content.child(self.info(&field.title, docs.text(&field.file)));
@@ -339,7 +340,8 @@ impl InstallerView {
         let page = model.page;
         let error = model.error.clone();
         drop(model);
-        let mut detail = Self::stack().child(
+        let collection = matches!(page, Page::Collection(_));
+        let mut detail = Self::stack().distribution(if collection { StackDistribution::Center } else { StackDistribution::Start }).child(
             self.page(compact)
                 .layout()
                 .flex_grow(f32::from(page == Page::Licenses)),
@@ -353,7 +355,9 @@ impl InstallerView {
         } else {
             Box::new(
                 Scroll::new(self.core.scrolls[page.index()].clone())
-                    .content(ContentArea::pane(detail)),
+                    .content(if collection {
+                        ContentArea::pane(detail).maximum_width(self.theme.get().layout.form_width)
+                    } else { ContentArea::pane(detail) }),
             )
         };
         let content: Box<dyn View> = if wide {
