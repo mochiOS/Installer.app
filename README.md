@@ -82,7 +82,8 @@ A window-close request is rejected while destructive installation is running.
 
 ## Consent and future consumers
 
-Shared device records live in AppCore `consent`. See
+Shared device records live in the standalone `mochios-device-consent` library;
+AppCore contains no installer-specific consent API. See
 `tools/devkit/docs/device-consent.md` for gate, persistence, withdrawal, queue and
 update requirements. Installer state is in memory until a verified installation
 has reached target persistence; it never writes consent into the running system.
@@ -95,3 +96,17 @@ as other apps. `mmake ui` includes Installer in the Linux desktop catalogue.
 `mmake installer` remains the native target. Preview requires no login and never
 obtains raw disk authority. UI and model tests cover all thirteen pages, consent
 gates/edits, safe target selection, final confirmation, and failure paths.
+
+## Optional data choices
+
+The three independent pages are **Usage & Diagnostics**, **Crash Reports** and
+**Update Results**. Each starts unselected. Agree/Disagree changes only the
+in-memory draft; Continue commits the decision, timestamp and category-specific
+policy version. Disagreement never blocks installation or OS updates. Back and
+summary edits preserve the other choices and the legal-document receipts.
+
+Each page loads its summary and all six expandable disclosure bodies from
+external `abcdef` files. See `tools/devkit/docs/data-consent-contract.md` for the
+AdminDashboard/client audit; no real privacy explanation is authored here.
+Schema 2 does not reuse legacy category grants. No receipt is uploaded to the
+dashboard. Settings UI and a new retention/re-consent queue remain out of scope.

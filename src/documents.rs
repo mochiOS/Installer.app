@@ -1,5 +1,5 @@
 //! Runtime UTF-8 documents, separately packaged for post-install viewing.
-use appcore::consent::{ConsentRecord, DataCategory, DocumentReceipt};
+use mochios_device_consent::{ConsentRecord, DataCategory, DocumentReceipt};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;

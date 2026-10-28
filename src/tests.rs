@@ -1,8 +1,8 @@
 use super::*;
-use appcore::consent::{ConsentRecord, DataCategory, DocumentReceipt};
 use appcore::storage::{Entry, Kind, Snapshot};
 use backend::{Backend, Disk, Inventory, Plan, Progress, VerifiedTarget};
 use documents::Documents;
+use mochios_device_consent::{ConsentRecord, DataCategory, DocumentReceipt};
 use model::{Action, Busy, Dialog, Effect, Page, Wizard};
 use std::fs;
 use std::path::PathBuf;
@@ -104,7 +104,7 @@ fn legal_gates_and_disagreement_confirmation_cannot_be_skipped() {
     w.apply(Action::License(1), 6);
     assert_eq!(w.license, 1);
     w.apply(Action::ConfirmLicenses, 7);
-    assert_eq!(w.page, Page::Collection(DataCategory::ActiveUsage));
+    assert_eq!(w.page, Page::Collection(DataCategory::UsageDiagnostics));
 }
 #[test]
 fn choices_are_independent_explicit_and_only_committed_by_continue() {
@@ -119,7 +119,7 @@ fn choices_are_independent_explicit_and_only_committed_by_continue() {
         assert!(w.record.permission(category).is_none());
         assert!(w.can_next());
         w.apply(Action::Next, 12);
-        assert_eq!(w.record.permission(category).unwrap().allowed, i == 1);
+        assert_eq!(w.record.permission(category).unwrap().agreed(), i == 1);
     }
     assert_eq!(w.page, Page::ConsentSummary);
     assert!(!w.consent_ready());
@@ -152,12 +152,9 @@ fn summary_edits_return_to_summary_and_preserve_unrelated_choices() {
     assert_eq!(w.record.crash_reports, original.crash_reports);
     w.apply(Action::Next, 24);
     assert_eq!(w.page, Page::ConsentSummary);
-    assert!(w.record.crash_reports.as_ref().unwrap().allowed);
-    assert_eq!(w.record.active_usage, original.active_usage);
-    assert_eq!(
-        w.record.performance_diagnostics,
-        original.performance_diagnostics
-    );
+    assert!(w.record.crash_reports.as_ref().unwrap().agreed());
+    assert_eq!(w.record.usage_diagnostics, original.usage_diagnostics);
+    assert_eq!(w.record.update_results, original.update_results);
     assert!(w.consent_ready());
     w.record.terms.as_mut().unwrap().sha256 = "0".repeat(64);
     assert!(!w.consent_ready());
@@ -297,7 +294,8 @@ fn backend_errors_never_report_success_and_only_verified_target_receives_consent
             backend.writes.load(Ordering::Relaxed),
             usize::from(failure != 1)
         );
-        let store = appcore::consent::ConsentStore::at_directory(root.0.join("var/config/privacy"));
+        let store =
+            mochios_device_consent::ConsentStore::at_directory(root.0.join("var/config/privacy"));
         if failure == 0 {
             assert_eq!(store.load().unwrap(), w.record);
         }
@@ -376,27 +374,27 @@ fn data_policy_versions_are_independent_and_locale_falls_back_to_english() {
     assert!(documents.legal_matches(&w.record));
     assert_eq!(
         documents
-            .disclosure(DataCategory::ActiveUsage, "unknown-locale")
+            .disclosure(DataCategory::UsageDiagnostics, "unknown-locale")
             .summary_file,
         documents
-            .disclosure(DataCategory::ActiveUsage, "en")
+            .disclosure(DataCategory::UsageDiagnostics, "en")
             .summary_file
     );
     w.page = Page::ConsentSummary;
     w.apply(
-        Action::Edit(Page::Collection(DataCategory::ActiveUsage)),
+        Action::Edit(Page::Collection(DataCategory::UsageDiagnostics)),
         40,
     );
     w.apply(Action::Choose(false), 41);
     w.apply(Action::Next, 42);
     assert!(w.consent_ready());
     assert_eq!(
-        w.record.active_usage.as_ref().unwrap().policy_version,
+        w.record.usage_diagnostics.as_ref().unwrap().policy_version,
         "purpose-v2"
     );
     assert_eq!(
         w.record.crash_reports.as_ref().unwrap().policy_version,
-        "placeholder-1"
+        "placeholder-2"
     );
 }
 #[test]
@@ -530,4 +528,60 @@ fn mounted_data_disks_and_unresolved_mounts_are_not_destinations() {
     );
     snapshot.entries.last_mut().unwrap().parent = Some(999);
     assert!(Inventory::from_snapshot(snapshot).target(20).is_none());
+}
+
+#[test]
+fn all_optional_decision_combinations_can_continue_without_changing_legal_receipts() {
+    for mask in 0..8 {
+        let mut w = wizard();
+        consent(&mut w.record, &docs());
+        w.record.usage_diagnostics = None;
+        w.record.crash_reports = None;
+        w.record.update_results = None;
+        let legal = (
+            w.record.terms.clone(),
+            w.record.privacy.clone(),
+            w.record.open_source_licenses.clone(),
+        );
+        for category in DataCategory::ALL {
+            w.page = Page::Collection(category);
+            assert!(!w.can_next());
+            let decision = mask & (1 << category.index()) != 0;
+            w.apply(Action::Choose(decision), 100);
+            assert_eq!(w.page, Page::Collection(category));
+            assert!(w.record.permission(category).is_none());
+            w.apply(Action::Next, 101);
+            assert_eq!(w.record.permission(category).unwrap().agreed(), decision);
+        }
+        assert!(w.consent_ready());
+        assert!(matches!(w.apply(Action::Next, 102), Effect::Discover));
+        assert_eq!(w.page, Page::Destination);
+        assert_eq!(
+            legal,
+            (
+                w.record.terms.clone(),
+                w.record.privacy.clone(),
+                w.record.open_source_licenses.clone()
+            )
+        );
+    }
+}
+
+#[test]
+fn current_category_catalog_matches_the_shared_gate_and_contains_only_placeholder_bodies() {
+    let documents = docs();
+    assert_eq!(
+        DataCategory::ALL.map(|c| Page::Collection(c).title()),
+        ["Usage & Diagnostics", "Crash Reports", "Update Results"]
+    );
+    for category in DataCategory::ALL {
+        let policy = documents.policy(category);
+        assert_eq!(policy.version, category.policy_version());
+        let disclosure = documents.disclosure(category, "en");
+        assert_eq!(documents.text(&disclosure.summary_file), "abcdef");
+        assert_eq!(disclosure.fields.len(), 6);
+        for field in &disclosure.fields {
+            assert_eq!(documents.text(&field.file), "abcdef");
+        }
+    }
 }

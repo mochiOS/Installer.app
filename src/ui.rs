@@ -1,7 +1,7 @@
 use crate::backend::PROVIDER_GAP;
 use crate::controller::Controller;
 use crate::model::{Action, Busy, Dialog as Modal, Page};
-use appcore::consent::DataCategory;
+use mochios_device_consent::DataCategory;
 use appcore::prelude::*;
 use appcore::viewkit::{
     event::{EventContext, EventResult, ViewEvent},
@@ -120,12 +120,12 @@ impl InstallerView {
                 };
                 let choices: Box<dyn View> = if compact {
                     Box::new(VStack::new().gap(StackGap::Medium)
-                        .child(choice("Allow", true))
-                        .child(choice("Don’t Allow", false)))
+                        .child(choice("Agree", true))
+                        .child(choice("Disagree", false)))
                 } else {
                     Box::new(HStack::new().gap(StackGap::Large)
-                        .child(choice("Allow", true))
-                        .child(choice("Don’t Allow", false)))
+                        .child(choice("Agree", true))
+                        .child(choice("Disagree", false)))
                 };
                 let mut content = VStack::new()
                     .alignment(StackAlignment::Stretch)
@@ -153,7 +153,7 @@ impl InstallerView {
                     ("Open Source Licenses", if model.record.open_source_licenses.is_some() { "Reviewed" } else { "Not reviewed" }, Page::Licenses),
                 ] { content = content.child(self.summary_row(core, title, value, page)); }
                 for category in DataCategory::ALL {
-                    content = content.child(self.summary_row(core, Page::Collection(category).title(), model.record.permission(category).map_or("Not selected", |p| if p.allowed { "Allow" } else { "Don’t Allow" }), Page::Collection(category)));
+                    content = content.child(self.summary_row(core, Page::Collection(category).title(), model.record.permission(category).map_or("Not selected", |p| if p.agreed() { "Agree" } else { "Disagree" }), Page::Collection(category)));
                 }
                 Box::new(content)
             }

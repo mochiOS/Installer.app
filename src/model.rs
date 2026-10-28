@@ -1,7 +1,7 @@
 //! Pure wizard state; neither rendering nor navigation can write a disk.
 use crate::backend::{Disk, Inventory, Plan, Progress};
 use crate::documents::Documents;
-use appcore::consent::{ConsentRecord, DataCategory, DocumentReceipt};
+use mochios_device_consent::{ConsentRecord, DataCategory, DocumentReceipt};
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,9 +24,9 @@ impl Page {
         Self::Terms,
         Self::Privacy,
         Self::Licenses,
-        Self::Collection(DataCategory::ActiveUsage),
+        Self::Collection(DataCategory::UsageDiagnostics),
         Self::Collection(DataCategory::CrashReports),
-        Self::Collection(DataCategory::PerformanceDiagnostics),
+        Self::Collection(DataCategory::UpdateResults),
         Self::ConsentSummary,
         Self::Destination,
         Self::Storage,
@@ -43,9 +43,9 @@ impl Page {
             Self::Terms => "Terms of Use",
             Self::Privacy => "Privacy Policy",
             Self::Licenses => "Open Source Licenses",
-            Self::Collection(DataCategory::ActiveUsage) => "Active Usage Statistics",
+            Self::Collection(DataCategory::UsageDiagnostics) => "Usage & Diagnostics",
             Self::Collection(DataCategory::CrashReports) => "Crash Reports",
-            Self::Collection(DataCategory::PerformanceDiagnostics) => "Performance Diagnostics",
+            Self::Collection(DataCategory::UpdateResults) => "Update Results",
             Self::ConsentSummary => "Privacy & Consent Summary",
             Self::Destination => "Installation Destination",
             Self::Storage => "Storage Configuration",
@@ -222,7 +222,7 @@ impl Wizard {
                         &docs.license_bytes(),
                         now,
                     ));
-                    self.acknowledged(Page::Collection(DataCategory::ActiveUsage));
+                    self.acknowledged(Page::Collection(DataCategory::UsageDiagnostics));
                 }
             }
             Action::Choose(allowed) => {
@@ -250,7 +250,7 @@ impl Wizard {
                     Page::Terms | Page::Privacy | Page::Licenses | Page::Collection(_)
                 ) {
                     if let Page::Collection(c) = page {
-                        self.drafts[c.index()] = self.record.permission(c).map(|p| p.allowed);
+                        self.drafts[c.index()] = self.record.permission(c).map(|p| p.agreed());
                     }
                     self.page = page;
                     self.editing = true;

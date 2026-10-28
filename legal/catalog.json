@@ -19,41 +19,41 @@
   ],
   "data_policies": [
     {
-      "category": "active_usage",
-      "version": "placeholder-1",
+      "category": "usage_diagnostics",
+      "version": "placeholder-2",
       "text": {
         "en": {
-          "summary_file": "active-usage-summary.en.txt",
+          "summary_file": "usage-diagnostics-summary.en.txt",
           "fields": [
             {
               "key": "purpose",
               "title": "Purpose",
-              "file": "active-usage-purpose.en.txt"
+              "file": "usage-diagnostics-purpose.en.txt"
             },
             {
               "key": "data",
               "title": "Data sent",
-              "file": "active-usage-data.en.txt"
+              "file": "usage-diagnostics-data.en.txt"
             },
             {
               "key": "destination",
               "title": "Destination",
-              "file": "active-usage-destination.en.txt"
+              "file": "usage-diagnostics-destination.en.txt"
             },
             {
               "key": "retention",
               "title": "Retention",
-              "file": "active-usage-retention.en.txt"
+              "file": "usage-diagnostics-retention.en.txt"
             },
             {
               "key": "exclusions",
               "title": "Not included",
-              "file": "active-usage-exclusions.en.txt"
+              "file": "usage-diagnostics-exclusions.en.txt"
             },
             {
               "key": "settings",
               "title": "Changing this choice",
-              "file": "active-usage-settings.en.txt"
+              "file": "usage-diagnostics-settings.en.txt"
             }
           ]
         }
@@ -61,7 +61,7 @@
     },
     {
       "category": "crash_reports",
-      "version": "placeholder-1",
+      "version": "placeholder-2",
       "text": {
         "en": {
           "summary_file": "crash-reports-summary.en.txt",
@@ -101,41 +101,41 @@
       }
     },
     {
-      "category": "performance_diagnostics",
-      "version": "placeholder-1",
+      "category": "update_results",
+      "version": "placeholder-2",
       "text": {
         "en": {
-          "summary_file": "performance-diagnostics-summary.en.txt",
+          "summary_file": "update-results-summary.en.txt",
           "fields": [
             {
               "key": "purpose",
               "title": "Purpose",
-              "file": "performance-diagnostics-purpose.en.txt"
+              "file": "update-results-purpose.en.txt"
             },
             {
               "key": "data",
               "title": "Data sent",
-              "file": "performance-diagnostics-data.en.txt"
+              "file": "update-results-data.en.txt"
             },
             {
               "key": "destination",
               "title": "Destination",
-              "file": "performance-diagnostics-destination.en.txt"
+              "file": "update-results-destination.en.txt"
             },
             {
               "key": "retention",
               "title": "Retention",
-              "file": "performance-diagnostics-retention.en.txt"
+              "file": "update-results-retention.en.txt"
             },
             {
               "key": "exclusions",
               "title": "Not included",
-              "file": "performance-diagnostics-exclusions.en.txt"
+              "file": "update-results-exclusions.en.txt"
             },
             {
               "key": "settings",
               "title": "Changing this choice",
-              "file": "performance-diagnostics-settings.en.txt"
+              "file": "update-results-settings.en.txt"
             }
           ]
         }

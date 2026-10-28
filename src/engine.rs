@@ -3,7 +3,7 @@
 use crate::backend::{Backend, Progress};
 use crate::documents::Documents;
 use crate::model::{Authorization, Receipt};
-use appcore::consent::{ConsentStore, DataCategory};
+use mochios_device_consent::{ConsentStore, DataCategory};
 
 pub fn install(
     backend: &dyn Backend,
