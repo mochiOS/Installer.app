@@ -341,13 +341,6 @@ impl InstallerView {
                 VStack::new()
                     .alignment(StackAlignment::Stretch)
                     .gap(StackGap::None)
-                    .child(Toolbar::new(
-                        HStack::new()
-                            .alignment(StackAlignment::Center)
-                            .child(Text::label("Install mochiOS Kinako"))
-                            .child(Spacer::new())
-                            .child(self.metadata(format!("{} of 13", page.index() + 1))),
-                    ))
                     .child(content.layout().flex_grow(1.0))
                     .child(Toolbar::bottom(self.responsive_footer(compact))),
             ),
