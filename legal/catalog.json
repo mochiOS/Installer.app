@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "document_version": "placeholder-1",
+  "licenses": [
+    {
+      "name": "mochiOS",
+      "version": null,
+      "license": "Apache-2.0",
+      "copyright_file": "mochios-license.txt",
+      "body_file": "mochios-license.txt"
+    },
+    {
+      "name": "Example Library",
+      "version": null,
+      "license": "MIT",
+      "copyright_file": "example-license.txt",
+      "body_file": "example-license.txt"
+    }
+  ],
+  "data_policies": [
+    {
+      "category": "active_usage",
+      "version": "placeholder-1",
+      "text": {
+        "en": {
+          "summary_file": "active-usage-summary.en.txt",
+          "fields": [
+            {
+              "key": "purpose",
+              "title": "Purpose",
+              "file": "active-usage-purpose.en.txt"
+            },
+            {
+              "key": "data",
+              "title": "Data sent",
+              "file": "active-usage-data.en.txt"
+            },
+            {
+              "key": "destination",
+              "title": "Destination",
+              "file": "active-usage-destination.en.txt"
+            },
+            {
+              "key": "retention",
+              "title": "Retention",
+              "file": "active-usage-retention.en.txt"
+            },
+            {
+              "key": "exclusions",
+              "title": "Not included",
+              "file": "active-usage-exclusions.en.txt"
+            },
+            {
+              "key": "settings",
+              "title": "Changing this choice",
+              "file": "active-usage-settings.en.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "category": "crash_reports",
+      "version": "placeholder-1",
+      "text": {
+        "en": {
+          "summary_file": "crash-reports-summary.en.txt",
+          "fields": [
+            {
+              "key": "purpose",
+              "title": "Purpose",
+              "file": "crash-reports-purpose.en.txt"
+            },
+            {
+              "key": "data",
+              "title": "Data sent",
+              "file": "crash-reports-data.en.txt"
+            },
+            {
+              "key": "destination",
+              "title": "Destination",
+              "file": "crash-reports-destination.en.txt"
+            },
+            {
+              "key": "retention",
+              "title": "Retention",
+              "file": "crash-reports-retention.en.txt"
+            },
+            {
+              "key": "exclusions",
+              "title": "Not included",
+              "file": "crash-reports-exclusions.en.txt"
+            },
+            {
+              "key": "settings",
+              "title": "Changing this choice",
+              "file": "crash-reports-settings.en.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "category": "performance_diagnostics",
+      "version": "placeholder-1",
+      "text": {
+        "en": {
+          "summary_file": "performance-diagnostics-summary.en.txt",
+          "fields": [
+            {
+              "key": "purpose",
+              "title": "Purpose",
+              "file": "performance-diagnostics-purpose.en.txt"
+            },
+            {
+              "key": "data",
+              "title": "Data sent",
+              "file": "performance-diagnostics-data.en.txt"
+            },
+            {
+              "key": "destination",
+              "title": "Destination",
+              "file": "performance-diagnostics-destination.en.txt"
+            },
+            {
+              "key": "retention",
+              "title": "Retention",
+              "file": "performance-diagnostics-retention.en.txt"
+            },
+            {
+              "key": "exclusions",
+              "title": "Not included",
+              "file": "performance-diagnostics-exclusions.en.txt"
+            },
+            {
+              "key": "settings",
+              "title": "Changing this choice",
+              "file": "performance-diagnostics-settings.en.txt"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
