@@ -54,7 +54,7 @@ impl InstallerView {
             .child(Text::label(title))
             .child(self.metadata(value))
     }
-    fn page(&self) -> Box<dyn View> {
+    fn page(&self, compact: bool) -> Box<dyn View> {
         let model = self.core.model.borrow();
         let core = &self.core;
         let Some(docs) = model.documents.as_ref().ok() else {
@@ -104,10 +104,38 @@ impl InstallerView {
             }
             Page::Collection(category) => {
                 let selected = model.drafts[category.index()];
+                let theme = self.theme.get();
+                let choice = |label: &str, allow: bool| {
+                    core.button(label, Action::Choose(allow))
+                        .size(ButtonSize::Large)
+                        .accessibility_selected(selected == Some(allow))
+                        .style(if selected == Some(allow) { ButtonStyle::Primary } else { ButtonStyle::Standard })
+                        .layout()
+                        .frame(theme.spacing.giant * 3.0, theme.spacing.giant)
+                };
+                let choices: Box<dyn View> = if compact {
+                    Box::new(VStack::new().gap(StackGap::Large)
+                        .child(choice("Allow", true))
+                        .child(choice("Don’t Allow", false)))
+                } else {
+                    Box::new(HStack::new().gap(StackGap::Large)
+                        .child(choice("Allow", true))
+                        .child(choice("Don’t Allow", false)))
+                };
+                let selection = VStack::new()
+                    .alignment(StackAlignment::Center)
+                    .distribution(StackDistribution::Center)
+                    .gap(StackGap::Large)
+                    .child(Text::label("Choose whether to share this data."))
+                    .child(choices)
+                    .child(self.metadata(match selected {
+                        Some(true) => "Allow selected. Continue to confirm.",
+                        Some(false) => "Don’t Allow selected. Continue to confirm.",
+                        None => "Select an option to continue.",
+                    }))
+                    .layout().height(theme.spacing.giant * 4.0);
                 let mut content = self.heading(model.page.title(), docs.text(&docs.disclosure(category, "en").summary_file))
-                    .child(HStack::new().gap(StackGap::Small)
-                        .child(core.button("Allow", Action::Choose(true)).accessibility_selected(selected == Some(true)).style(if selected == Some(true) { ButtonStyle::Primary } else { ButtonStyle::Standard }))
-                        .child(core.button("Don’t Allow", Action::Choose(false)).accessibility_selected(selected == Some(false)).style(if selected == Some(false) { ButtonStyle::Primary } else { ButtonStyle::Standard })))
+                    .child(selection)
                     .child(HStack::new().child(core.button(if model.details[category.index()] { "Hide Details" } else { "Show Details" }, Action::Details).toolbar()).child(Spacer::new()));
                 if model.details[category.index()] {
                     for field in &docs.disclosure(category, "en").fields {
@@ -312,7 +340,7 @@ impl InstallerView {
         let error = model.error.clone();
         drop(model);
         let mut detail = Self::stack().child(
-            self.page()
+            self.page(compact)
                 .layout()
                 .flex_grow(f32::from(page == Page::Licenses)),
         );
