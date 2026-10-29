@@ -123,6 +123,9 @@ pub struct VerifiedTarget {
 }
 pub trait Backend: Send + Sync {
     fn inventory(&self) -> Result<Inventory, String>;
+    /// 署名済みソースと現在のディスク情報を検証し、変更予定を返します。
+    /// ワーカー上で呼ばれます。対象ディスクへの書き込みは行いません。
+    /// 検証失敗や未対応の場合はErrを返し、使用可能な計画として扱わせません。
     fn prepare(&self, disk: &Disk, release: &str) -> Result<Plan, String>;
     fn revalidate(&self, plan: &Plan) -> Result<(), String>;
     fn install(

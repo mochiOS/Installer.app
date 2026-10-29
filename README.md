@@ -117,7 +117,24 @@ These are not physical-machine installation, power-cut, UEFI boot or Secure Boot
 qualification tests. The existing OS still exposes no supported application-level
 restart API (Binder also reports restart unsupported); Installer keeps Restart
 disabled and reports this limitation rather than claiming that reboot works.
-A window-close request remains rejected during destructive installation.
+Window-close and application-wide Quit requests remain rejected during
+installation and a restart request. A rejected Quit is discarded rather than
+automatically retried after the operation finishes.
+
+## Background operations
+
+Disk discovery, read-only storage validation, installation and restart use
+AppCore's bounded `TaskScope`. Progress is coalesced and completion is delivered
+on the UI thread; painting no longer polls a channel or requests a 50ms timer.
+The controller owns the scope and callbacks hold only a weak controller reference.
+
+Read-only validation may be abandoned by closing the window. Cancellation is
+checked before and after validation, and a cancelled result cannot publish a plan.
+Validation failure leaves Continue disabled until a valid plan is obtained.
+Installation has no cancellation checkpoints after it starts: closing is blocked
+until its actual result is delivered, and neither full progress nor worker failure
+is treated as verified success. Failed submission clears the busy state and
+displays an error. The native installation enablement guard remains unchanged.
 
 ## Consent and future consumers
 

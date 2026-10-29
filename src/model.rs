@@ -172,7 +172,7 @@ impl Wizard {
             Page::Collection(c) => self.drafts[c.index()].is_some() && self.documents.is_ok(),
             Page::ConsentSummary => self.consent_ready(),
             Page::Destination => self.consent_ready() && self.target().is_some(),
-            Page::Storage => self.consent_ready() && self.target().is_some(),
+            Page::Storage => self.consent_ready() && self.target().is_some() && self.plan.is_some(),
             _ => false,
         }
     }
@@ -283,6 +283,7 @@ impl Wizard {
                     if let Some(disk) = self.target().cloned() {
                         self.page = Page::Storage;
                         self.busy = Some(Busy::Preparing);
+                        self.progress = Some(Progress::stage("Checking storage configuration…"));
                         self.error = None;
                         self.plan = None;
                         return Effect::Prepare(disk);
@@ -384,6 +385,7 @@ impl Wizard {
             return;
         }
         self.busy = None;
+        self.progress = None;
         match result {
             Ok(plan)
                 if self.target().is_some_and(|d| d.entry == plan.target)

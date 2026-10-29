@@ -9,7 +9,6 @@ use appcore::viewkit::{
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
 struct Cached {
     revision: u64,
@@ -177,6 +176,8 @@ impl InstallerView {
                 if let Some(disk) = model.target() { content = content.child(self.info("Destination", format!("{} · {}", disk.entry.name, bytes(disk.entry.capacity)))); }
                 if let Some(plan) = &model.plan {
                     for partition in &plan.partitions { content = content.child(Self::paragraph(partition)); }
+                } else if model.busy == Some(Busy::Preparing) {
+                    content = content.child(Self::paragraph(model.progress.as_ref().map_or("Checking storage configuration…", |progress| progress.stage.as_str())));
                 } else {
                     content = content.child(self.metadata("A proposed partition layout has not been provided."));
                     if let Some(inventory) = &model.inventory {
@@ -469,7 +470,6 @@ impl View for InstallerView {
     }
     fn paint(&self, bounds: Rect, context: &mut PaintContext<'_>) {
         self.theme.set(*context.theme);
-        self.core.poll();
         self.core.flush();
         self.ensure_cached(bounds);
         self.cached
@@ -483,9 +483,6 @@ impl View for InstallerView {
                 .color(RectangleColor::Custom(context.theme.shell.scrim))
                 .paint(bounds, context);
             dialog.paint(Self::modal_bounds(bounds), context);
-        }
-        if self.core.model.borrow().busy.is_some() {
-            context.request_redraw_in_at(bounds, Instant::now() + Duration::from_millis(50));
         }
     }
     fn handle_event(
@@ -507,7 +504,7 @@ impl View for InstallerView {
                 .view
                 .handle_event(bounds, event, context)
         };
-        if self.core.flush() || self.core.poll() {
+        if self.core.flush() {
             context.request_redraw();
         }
         result

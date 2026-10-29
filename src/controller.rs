@@ -3,18 +3,20 @@ use crate::backend::{Backend, NativeBackend, Plan, Progress};
 use crate::documents::{self, Documents};
 use crate::model::{Action, Busy, Effect, Receipt, Wizard};
 use appcore::prelude::*;
-use appcore::task::{TaskError, TaskScope, TaskSlot, TaskStartError};
+use appcore::task::{
+    Progress as TaskProgress, TaskContext, TaskError, TaskResult, TaskScope, TaskSlot,
+    TaskStartError,
+};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, VecDeque};
 use std::rc::{Rc, Weak};
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-enum JobEvent {
-    Prepared(Result<Plan, String>),
-    Progress(Progress),
-    Installed(Result<Receipt, String>),
-    Reboot(Result<(), String>),
+enum OperationResult {
+    Prepared(Plan),
+    Installed(Receipt),
+    Reboot,
 }
 pub struct Controller {
     pub model: RefCell<Wizard>,
@@ -25,10 +27,9 @@ pub struct Controller {
     pub license_detail_scrolls: Vec<ScrollState>,
     queue: Rc<RefCell<VecDeque<Action>>>,
     buttons: RefCell<BTreeMap<String, ButtonInteractionState>>,
-    worker: RefCell<Option<mpsc::Receiver<JobEvent>>>,
     backend: Arc<dyn Backend>,
     owner: Weak<Self>,
-    discovery: Result<TaskScope, TaskStartError>,
+    tasks: Result<TaskScope, TaskStartError>,
     discovery_slot: RefCell<TaskSlot>,
 }
 impl Controller {
@@ -45,10 +46,9 @@ impl Controller {
             license_detail_scrolls: (0..license_count).map(|_| ScrollState::new()).collect(),
             queue: Rc::new(RefCell::new(VecDeque::new())),
             buttons: RefCell::new(BTreeMap::new()),
-            worker: RefCell::new(None),
             backend: Arc::new(NativeBackend::default()),
             owner: owner.clone(),
-            discovery: TaskScope::new(),
+            tasks: TaskScope::new(),
             discovery_slot: RefCell::new(TaskSlot::new()),
         })
     }
@@ -114,7 +114,7 @@ impl Controller {
         }
         if matches!(effect, Effect::Discover) {
             let result = self
-                .discovery
+                .tasks
                 .as_ref()
                 .map_err(|error| *error)
                 .and_then(|scope| {
@@ -146,93 +146,340 @@ impl Controller {
             }
             return;
         }
-        let (sender, receiver) = mpsc::sync_channel(32);
         let backend = self.backend.clone();
         let release = self.model.borrow().release.clone();
         let documents = self.model.borrow().documents.as_ref().ok().cloned();
-        let result = std::thread::Builder::new()
-            .name("installer-operation".into())
-            .spawn(move || {
-                let event = match effect {
-                    Effect::Prepare(disk) => JobEvent::Prepared(backend.prepare(&disk, &release)),
-                    Effect::Install(request) => {
-                        let result = documents
-                            .ok_or_else(|| "Legal documents are unavailable.".into())
-                            .and_then(|docs| {
-                                crate::engine::install(
-                                    backend.as_ref(),
-                                    request,
-                                    &docs,
-                                    &mut |progress| {
-                                        let _ = sender.try_send(JobEvent::Progress(progress));
-                                    },
-                                )
-                            });
-                        JobEvent::Installed(result)
-                    }
-                    Effect::Reboot => JobEvent::Reboot(backend.reboot()),
-                    _ => return,
-                };
-                let _ = sender.send(event);
+        let progress_owner = self.owner.clone();
+        let completion_owner = self.owner.clone();
+        let result = self
+            .tasks
+            .as_ref()
+            .map_err(|error| *error)
+            .and_then(|scope| {
+                scope
+                    .spawn_with_progress(
+                        move |task| {
+                            run_operation(
+                                effect,
+                                backend.as_ref(),
+                                &release,
+                                documents.as_deref(),
+                                &task,
+                            )
+                        },
+                        move |progress| {
+                            if let Some(core) = progress_owner.upgrade() {
+                                if core.model.borrow().busy.is_some() {
+                                    core.model.borrow_mut().progress = Some(Progress {
+                                        stage: progress.message().into(),
+                                        completed: progress.completed(),
+                                        total: progress.total(),
+                                    });
+                                    core.changed();
+                                }
+                            }
+                        },
+                        move |result| {
+                            if let Some(core) = completion_owner.upgrade() {
+                                core.completed(result);
+                            }
+                        },
+                    )
+                    .map(|_| ())
             });
-        match result {
-            Ok(_) => *self.worker.borrow_mut() = Some(receiver),
-            Err(e) => {
-                let mut model = self.model.borrow_mut();
-                model.busy = None;
-                model.error = Some(format!("The operation could not start: {e}"));
-            }
+        if let Err(error) = result {
+            self.failed(format!("The operation could not start: {error}"));
         }
     }
-    pub fn poll(&self) -> bool {
-        let mut worker_failed = false;
-        let events = {
-            let worker = self.worker.borrow();
-            let Some(receiver) = worker.as_ref() else {
-                return false;
-            };
-            let mut events = Vec::new();
-            loop {
-                match receiver.try_recv() {
-                    Ok(event) => events.push(event),
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        if events.is_empty() && self.model.borrow().busy.is_some() {
-                            worker_failed = true;
-                            let mut model = self.model.borrow_mut();
-                            model.busy = None;
-                            model.error = Some("The installation worker stopped unexpectedly. Completion has not been verified.".into());
-                        }
-                        break;
-                    }
-                }
+    fn failed(&self, error: String) {
+        let mut model = self.model.borrow_mut();
+        model.busy = None;
+        model.progress = None;
+        model.error = Some(error);
+        self.changed();
+    }
+    fn completed(&self, result: TaskResult<OperationResult, String>) {
+        match result {
+            Ok(OperationResult::Prepared(plan)) => self.model.borrow_mut().prepared(Ok(plan)),
+            Ok(OperationResult::Installed(receipt)) => {
+                self.model.borrow_mut().finished(Ok(receipt))
             }
-            events
-        };
-        let changed = worker_failed || !events.is_empty();
-        for event in events {
-            let mut model = self.model.borrow_mut();
-            match event {
-                JobEvent::Prepared(result) => model.prepared(result),
-                JobEvent::Progress(progress) if model.busy == Some(Busy::Installing) => {
-                    model.progress = Some(progress)
-                }
-                JobEvent::Installed(result) => model.finished(result),
-                JobEvent::Reboot(result) => {
+            Ok(OperationResult::Reboot) => {
+                let mut model = self.model.borrow_mut();
+                if model.busy == Some(Busy::Rebooting) {
                     model.busy = None;
-                    if let Err(e) = result {
-                        model.error = Some(e);
-                    }
+                    model.error = None;
                 }
-                _ => {}
             }
+            Err(error) => self.failed(task_error(error)),
         }
-        if self.model.borrow().busy.is_none() {
-            self.worker.borrow_mut().take();
+        self.changed();
+    }
+    /// 書き込み・再起動の実行中はfalseを返し、ウィンドウ終了を保留します。
+    /// 読み取り専用の検証中は終了できます。Scope破棄後の通知はAppCoreが解除します。
+    pub fn can_close(&self) -> bool {
+        !matches!(
+            self.model.borrow().busy,
+            Some(Busy::Installing | Busy::Rebooting)
+        )
+    }
+}
+
+// Only this worker boundary performs blocking calls. No UI state crosses it.
+fn run_operation(
+    effect: Effect,
+    backend: &dyn Backend,
+    release: &str,
+    documents: Option<&Documents>,
+    task: &TaskContext,
+) -> TaskResult<OperationResult, String> {
+    task.check_cancelled()?;
+    match effect {
+        Effect::Prepare(disk) => {
+            task.report(TaskProgress::indeterminate(
+                "Checking storage configuration…",
+            ));
+            let result = backend.prepare(&disk, release);
+            task.check_cancelled()?;
+            result
+                .map(OperationResult::Prepared)
+                .map_err(TaskError::Operation)
         }
-        if changed {
-            self.changed();
+        Effect::Install(request) => {
+            // Once installation starts there are no cancellation checkpoints:
+            // an arbitrary abort could leave partially committed disk state.
+            let result = documents
+                .ok_or_else(|| "Legal documents are unavailable.".into())
+                .and_then(|docs| {
+                    crate::engine::install(backend, request, docs, &mut |progress| {
+                        task.report(task_progress(progress));
+                    })
+                });
+            result
+                .map(OperationResult::Installed)
+                .map_err(TaskError::Operation)
         }
-        changed
+        Effect::Reboot => backend
+            .reboot()
+            .map(|()| OperationResult::Reboot)
+            .map_err(TaskError::Operation),
+        _ => Err(TaskError::Operation(
+            "An unsupported background operation was requested.".into(),
+        )),
+    }
+}
+fn task_progress(progress: Progress) -> TaskProgress {
+    if let (Some(done), Some(total)) = (progress.completed, progress.total) {
+        if let Ok(value) = TaskProgress::measured(&progress.stage, done, total) {
+            return value;
+        }
+    }
+    TaskProgress::indeterminate(progress.stage)
+}
+fn task_error(error: TaskError<String>) -> String {
+    match error {
+        TaskError::Operation(error) => error,
+        TaskError::Cancelled => "The operation was cancelled before completion.".into(),
+        TaskError::WorkerStopped => {
+            "The operation worker stopped unexpectedly. Completion has not been verified.".into()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::{Disk, Inventory, VerifiedTarget};
+    use crate::model::Page;
+    use crate::tests::{consent, docs, inventory, plan};
+    use appcore::task::{TaskExecutor, TaskStatus};
+    use std::sync::{Mutex, mpsc};
+    use std::time::{Duration, Instant};
+
+    struct ReadOnlyBackend {
+        started: mpsc::Sender<std::thread::ThreadId>,
+        release: Mutex<mpsc::Receiver<()>>,
+    }
+    impl Backend for ReadOnlyBackend {
+        fn inventory(&self) -> Result<Inventory, String> {
+            Ok(inventory())
+        }
+        fn prepare(&self, _: &Disk, _: &str) -> Result<Plan, String> {
+            self.started.send(std::thread::current().id()).unwrap();
+            self.release
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            Ok(plan())
+        }
+        fn revalidate(&self, _: &Plan) -> Result<(), String> {
+            panic!("read-only check must not install")
+        }
+        fn install(&self, _: &Plan, _: &mut dyn FnMut(Progress)) -> Result<VerifiedTarget, String> {
+            panic!("read-only check must not write")
+        }
+        fn finalize(&self, _: &VerifiedTarget, _: &mut dyn FnMut(Progress)) -> Result<(), String> {
+            panic!("read-only check must not finalize")
+        }
+        fn reboot(&self) -> Result<(), String> {
+            Err("Restart is unavailable in this environment.".into())
+        }
+    }
+    fn preparing() -> Rc<Controller> {
+        let core = Controller::new();
+        let mut model = core.model.borrow_mut();
+        model.release = "test-release".into();
+        consent(&mut model.record, &docs());
+        model.inventory = Some(inventory());
+        model.selected_disk = Some(20);
+        model.page = Page::Storage;
+        model.busy = Some(Busy::Preparing);
+        model.progress = Some(Progress::stage("Checking storage configuration…"));
+        drop(model);
+        core
+    }
+    fn wait_for(handle: &appcore::task::TaskHandle) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !handle.status().is_finished() {
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+    }
+    #[test]
+    fn storage_check_runs_off_ui_and_returns_a_plan_without_writes() {
+        let core = preparing();
+        let (started, ready) = mpsc::channel();
+        let (release, waiting) = mpsc::channel();
+        let backend = ReadOnlyBackend {
+            started,
+            release: Mutex::new(waiting),
+        };
+        let disk = inventory().target(20).unwrap().clone();
+        let scope = TaskScope::with_executor(&TaskExecutor::new(1, 2).unwrap()).unwrap();
+        let (completed, result) = mpsc::channel();
+        let handle = scope
+            .spawn(
+                move |task| -> TaskResult<(), String> {
+                    completed
+                        .send(run_operation(
+                            Effect::Prepare(disk),
+                            &backend,
+                            "test-release",
+                            None,
+                            &task,
+                        ))
+                        .unwrap();
+                    Ok(())
+                },
+                |_| {},
+            )
+            .unwrap();
+        assert_ne!(
+            ready.recv_timeout(Duration::from_secs(5)).unwrap(),
+            std::thread::current().id()
+        );
+        assert!(core.can_close());
+        assert!(!core.model.borrow().can_next());
+        release.send(()).unwrap();
+        // Deliver the actual worker outcome through the controller's UI boundary.
+        core.completed(result.recv_timeout(Duration::from_secs(5)).unwrap());
+        wait_for(&handle);
+        let model = core.model.borrow();
+        assert_eq!(model.plan, Some(plan()));
+        assert!(model.busy.is_none());
+        assert!(model.progress.is_none());
+        assert!(model.can_next());
+        assert!(model.installed.is_none());
+    }
+    #[test]
+    fn cancelling_read_only_check_does_not_publish_its_finished_plan() {
+        let core = preparing();
+        let (started, ready) = mpsc::channel();
+        let (release, waiting) = mpsc::channel();
+        let backend = ReadOnlyBackend {
+            started,
+            release: Mutex::new(waiting),
+        };
+        let disk = inventory().target(20).unwrap().clone();
+        let scope = TaskScope::with_executor(&TaskExecutor::new(1, 2).unwrap()).unwrap();
+        let (completed, result) = mpsc::channel();
+        let handle = scope
+            .spawn(
+                move |task| {
+                    let outcome =
+                        run_operation(Effect::Prepare(disk), &backend, "test-release", None, &task);
+                    completed
+                        .send(matches!(outcome, Err(TaskError::Cancelled)))
+                        .unwrap();
+                    outcome
+                },
+                |_| {},
+            )
+            .unwrap();
+        ready.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(handle.cancel());
+        assert_eq!(handle.status(), TaskStatus::CancellationRequested);
+        release.send(()).unwrap();
+        assert!(result.recv_timeout(Duration::from_secs(5)).unwrap());
+        wait_for(&handle);
+        assert_eq!(handle.status(), TaskStatus::Cancelled);
+        core.completed(Err(TaskError::Cancelled));
+        assert!(core.model.borrow().plan.is_none());
+        assert!(!core.model.borrow().can_next());
+        assert!(core.can_close());
+    }
+    #[test]
+    fn failed_submission_clears_busy_and_never_provides_a_plan() {
+        let mut core = Rc::try_unwrap(preparing()).ok().unwrap();
+        core.tasks = Err(TaskStartError::WorkerUnavailable);
+        core.execute(Effect::Prepare(inventory().target(20).unwrap().clone()));
+        let model = core.model.borrow();
+        assert!(model.busy.is_none());
+        assert!(model.progress.is_none());
+        assert!(model.plan.is_none());
+        assert!(model.error.as_ref().unwrap().contains("could not start"));
+        assert!(!model.can_next());
+    }
+    #[test]
+    fn failures_and_worker_stop_never_display_installation_complete() {
+        for error in [
+            TaskError::Operation("Device disconnected".into()),
+            TaskError::WorkerStopped,
+        ] {
+            let core = preparing();
+            core.model.borrow_mut().page = Page::Installing;
+            core.model.borrow_mut().busy = Some(Busy::Installing);
+            assert!(!core.can_close());
+            core.completed(Err(error));
+            let model = core.model.borrow();
+            assert_eq!(model.page, Page::Installing);
+            assert!(model.installed.is_none());
+            assert!(model.busy.is_none());
+            assert!(model.error.is_some());
+            assert!(core.can_close());
+        }
+    }
+    #[test]
+    fn invalid_progress_is_indeterminate_and_full_progress_is_not_success() {
+        for (done, total) in [(1, 0), (3, 2)] {
+            let progress = task_progress(Progress {
+                stage: "Verifying".into(),
+                completed: Some(done),
+                total: Some(total),
+            });
+            assert_eq!(progress.message(), "Verifying");
+            assert_eq!(progress.fraction(), None);
+        }
+        let progress = task_progress(Progress {
+            stage: "Verifying".into(),
+            completed: Some(2),
+            total: Some(2),
+        });
+        assert_eq!(progress.fraction(), Some(1.0));
+        let core = preparing();
+        core.model.borrow_mut().busy = Some(Busy::Installing);
+        assert!(!core.can_close());
+        assert!(core.model.borrow().installed.is_none());
     }
 }

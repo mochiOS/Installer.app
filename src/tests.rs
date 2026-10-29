@@ -8,13 +8,13 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-fn docs() -> Documents {
+pub(super) fn docs() -> Documents {
     Documents::load(&documents::resource_root()).unwrap()
 }
 fn wizard() -> Wizard {
     Wizard::new(Ok(docs()), "test-release".into())
 }
-fn consent(record: &mut ConsentRecord, docs: &Documents) {
+pub(super) fn consent(record: &mut ConsentRecord, docs: &Documents) {
     record.terms = Some(docs.receipt("terms.txt", 1));
     record.privacy = Some(docs.receipt("privacy.txt", 2));
     record.open_source_licenses = Some(DocumentReceipt::new(
@@ -42,7 +42,7 @@ fn disk(id: u64, name: &str) -> Entry {
         capacity_from_partition_map: false,
     }
 }
-fn inventory() -> Inventory {
+pub(super) fn inventory() -> Inventory {
     let mut part = disk(11, "Source partition");
     part.kind = Kind::Partition;
     part.parent = Some(10);
@@ -60,7 +60,7 @@ fn inventory() -> Inventory {
         ],
     })
 }
-fn plan() -> Plan {
+pub(super) fn plan() -> Plan {
     Plan {
         target: disk(20, "Target disk"),
         release: "test-release".into(),
@@ -423,14 +423,18 @@ fn consent_persistence_failure_prevents_completion() {
     assert!(w.installed.is_none());
 }
 #[test]
-fn closing_is_blocked_only_while_installation_is_running() {
+fn closing_is_blocked_during_installation_and_reboot_but_not_read_only_checks() {
     let core = controller::Controller::new();
     let mut app = InstallerApp { core: core.clone() };
     assert!(app.close_requested());
     core.model.borrow_mut().busy = Some(Busy::Installing);
     assert!(!app.close_requested());
-    core.model.borrow_mut().busy = None;
-    assert!(app.close_requested());
+    core.model.borrow_mut().busy = Some(Busy::Rebooting);
+    assert!(!app.close_requested());
+    for busy in [None, Some(Busy::Preparing), Some(Busy::Discovering)] {
+        core.model.borrow_mut().busy = busy;
+        assert!(app.close_requested());
+    }
 }
 
 #[test]

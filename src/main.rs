@@ -28,7 +28,7 @@ impl App for InstallerApp {
             .resizable(true)
     }
     fn close_requested(&mut self) -> bool {
-        self.core.model.borrow().busy != Some(model::Busy::Installing)
+        self.core.can_close()
     }
     fn body(&self, _: &ViewContext) -> Self::Body {
         ui::InstallerView::new(self.core.clone())
