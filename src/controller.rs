@@ -1,16 +1,16 @@
 //! UI commands and bounded asynchronous jobs. No service I/O in painting.
-use crate::backend::{Backend, Inventory, NativeBackend, Plan, Progress};
+use crate::backend::{Backend, NativeBackend, Plan, Progress};
 use crate::documents::{self, Documents};
 use crate::model::{Action, Busy, Effect, Receipt, Wizard};
 use appcore::prelude::*;
+use appcore::task::{TaskError, TaskScope, TaskSlot, TaskStartError};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, VecDeque};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::{Arc, mpsc};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 enum JobEvent {
-    Inventory(Result<Inventory, String>),
     Prepared(Result<Plan, String>),
     Progress(Progress),
     Installed(Result<Receipt, String>),
@@ -27,13 +27,16 @@ pub struct Controller {
     buttons: RefCell<BTreeMap<String, ButtonInteractionState>>,
     worker: RefCell<Option<mpsc::Receiver<JobEvent>>>,
     backend: Arc<dyn Backend>,
+    owner: Weak<Self>,
+    discovery: Result<TaskScope, TaskStartError>,
+    discovery_slot: RefCell<TaskSlot>,
 }
 impl Controller {
     pub fn new() -> Rc<Self> {
         let docs = Documents::load(&documents::resource_root())
             .map_err(|e| format!("Legal documents could not be loaded: {e}"));
         let license_count = docs.as_ref().map_or(0, |d| d.catalog.licenses.len());
-        Rc::new(Self {
+        Rc::new_cyclic(|owner| Self {
             model: RefCell::new(Wizard::new(docs, env!("MOCHIOS_VERSION").into())),
             revision: Cell::new(0),
             icon: ImageData::decode(include_bytes!("../appicon.png")).ok(),
@@ -44,6 +47,9 @@ impl Controller {
             buttons: RefCell::new(BTreeMap::new()),
             worker: RefCell::new(None),
             backend: Arc::new(NativeBackend::default()),
+            owner: owner.clone(),
+            discovery: TaskScope::new(),
+            discovery_slot: RefCell::new(TaskSlot::new()),
         })
     }
     pub fn button(&self, label: &str, action: Action) -> Button {
@@ -106,6 +112,40 @@ impl Controller {
             request_exit();
             return;
         }
+        if matches!(effect, Effect::Discover) {
+            let result = self
+                .discovery
+                .as_ref()
+                .map_err(|error| *error)
+                .and_then(|scope| {
+                    let backend = self.backend.clone();
+                    let owner = self.owner.clone();
+                    self.discovery_slot
+                        .borrow_mut()
+                        .spawn(
+                            scope,
+                            move |task| {
+                                task.check_cancelled()?;
+                                backend.inventory().map_err(TaskError::Operation)
+                            },
+                            move |result| {
+                                if let Some(core) = owner.upgrade() {
+                                    core.model.borrow_mut().discovered(result.map_err(|error| {
+                                        format!("Disk discovery could not finish: {error}")
+                                    }));
+                                    core.changed();
+                                }
+                            },
+                        )
+                        .map(|_| ())
+                });
+            if let Err(error) = result {
+                let mut model = self.model.borrow_mut();
+                model.busy = None;
+                model.error = Some(format!("Disk discovery could not start: {error}"));
+            }
+            return;
+        }
         let (sender, receiver) = mpsc::sync_channel(32);
         let backend = self.backend.clone();
         let release = self.model.borrow().release.clone();
@@ -114,7 +154,6 @@ impl Controller {
             .name("installer-operation".into())
             .spawn(move || {
                 let event = match effect {
-                    Effect::Discover => JobEvent::Inventory(backend.inventory()),
                     Effect::Prepare(disk) => JobEvent::Prepared(backend.prepare(&disk, &release)),
                     Effect::Install(request) => {
                         let result = documents
@@ -174,7 +213,6 @@ impl Controller {
         for event in events {
             let mut model = self.model.borrow_mut();
             match event {
-                JobEvent::Inventory(result) => model.discovered(result),
                 JobEvent::Prepared(result) => model.prepared(result),
                 JobEvent::Progress(progress) if model.busy == Some(Busy::Installing) => {
                     model.progress = Some(progress)
