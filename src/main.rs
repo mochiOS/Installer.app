@@ -1,7 +1,11 @@
 mod backend;
+mod native;
 mod controller;
 mod documents;
 mod engine;
+mod image_manifest;
+mod deployment;
+mod target_data;
 mod model;
 #[cfg(test)]
 mod tests;

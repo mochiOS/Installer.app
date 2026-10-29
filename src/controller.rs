@@ -43,7 +43,7 @@ impl Controller {
             queue: Rc::new(RefCell::new(VecDeque::new())),
             buttons: RefCell::new(BTreeMap::new()),
             worker: RefCell::new(None),
-            backend: Arc::new(NativeBackend),
+            backend: Arc::new(NativeBackend::default()),
         })
     }
     pub fn button(&self, label: &str, action: Action) -> Button {

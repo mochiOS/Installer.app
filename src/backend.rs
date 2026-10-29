@@ -1,10 +1,11 @@
 //! The native boundary. Inventory is real; fresh installation is fail-closed
-//! until a supported provisioner exposes source identity and a signed plan.
-use appcore::storage::{self, Entry, Kind, Snapshot};
+//! Execution remains disabled while the native deployment path is qualified.
+use appcore::storage::{Entry, Kind, Snapshot};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-pub const PROVIDER_GAP: &str = "This build cannot prepare a new installation disk. The installation service is unavailable. No disk changes have been made.";
+pub const PROVIDER_GAP: &str =
+    "Installation is disabled in this build. No disk changes have been made.";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Disk {
     pub entry: Entry,
@@ -95,7 +96,7 @@ pub struct Plan {
     pub formats: Vec<String>,
     pub erased_data: String,
     pub steps: Vec<String>,
-    /// Provider-generated identity for revalidation; not a raw disk ID.
+    /// Source/target identity retained by Installer; not a raw disk ID.
     pub identity: String,
 }
 #[derive(Clone, Debug)]
@@ -113,12 +114,12 @@ impl Progress {
         }
     }
 }
-/// Only returned after payload read-back verification and target Data mount.
+/// Returned after payload read-back; Data is either privately opened or mounted.
 #[derive(Clone, Debug)]
 pub struct VerifiedTarget {
     pub id: u64,
     pub release: String,
-    pub mounted_root: PathBuf,
+    pub mounted_root: Option<PathBuf>,
 }
 pub trait Backend: Send + Sync {
     fn inventory(&self) -> Result<Inventory, String>;
@@ -134,42 +135,33 @@ pub trait Backend: Send + Sync {
         target: &VerifiedTarget,
         progress: &mut dyn FnMut(Progress),
     ) -> Result<(), String>;
+    fn persist_consent(
+        &self,
+        target: &VerifiedTarget,
+        record: &mochios_device_consent::ConsentRecord,
+    ) -> Result<(), String> {
+        let root = target
+            .mounted_root
+            .as_ref()
+            .filter(|p| p.is_absolute() && p.parent().is_some())
+            .ok_or("The installation target is not available for privacy settings.")?;
+        let store =
+            mochios_device_consent::ConsentStore::at_directory(root.join("var/config/privacy"));
+        store
+            .save(record)
+            .map_err(|e| format!("Device privacy settings could not be saved: {e}"))?;
+        if store
+            .load()
+            .map_err(|e| format!("Device privacy settings could not be verified: {e}"))?
+            != *record
+        {
+            return Err("Saved device privacy settings do not match the confirmed choices.".into());
+        }
+        Ok(())
+    }
     fn supports_reboot(&self) -> bool {
         false
     }
     fn reboot(&self) -> Result<(), String>;
 }
-pub struct NativeBackend;
-impl Backend for NativeBackend {
-    fn inventory(&self) -> Result<Inventory, String> {
-        storage::inventory()
-            .map(Inventory::from_snapshot)
-            .map_err(|e| match e {
-                appcore::Error::UnsupportedPlatform => {
-                    "Disk discovery is not available in this preview.".into()
-                }
-                appcore::Error::System(13) => {
-                    "Installer does not have permission to read disk information.".into()
-                }
-                appcore::Error::System(11) => {
-                    "Disk information is not ready yet. Try Refresh Disks again.".into()
-                }
-                _ => format!("Disk information could not be read: {e:?}"),
-            })
-    }
-    fn prepare(&self, _: &Disk, _: &str) -> Result<Plan, String> {
-        Err(PROVIDER_GAP.into())
-    }
-    fn revalidate(&self, _: &Plan) -> Result<(), String> {
-        Err(PROVIDER_GAP.into())
-    }
-    fn install(&self, _: &Plan, _: &mut dyn FnMut(Progress)) -> Result<VerifiedTarget, String> {
-        Err(PROVIDER_GAP.into())
-    }
-    fn finalize(&self, _: &VerifiedTarget, _: &mut dyn FnMut(Progress)) -> Result<(), String> {
-        Err(PROVIDER_GAP.into())
-    }
-    fn reboot(&self) -> Result<(), String> {
-        Err("A supported restart API is not available to Installer.".into())
-    }
-}
+pub use crate::native::NativeBackend;

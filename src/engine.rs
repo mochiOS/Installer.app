@@ -3,7 +3,7 @@
 use crate::backend::{Backend, Progress};
 use crate::documents::Documents;
 use crate::model::{Authorization, Receipt};
-use mochios_device_consent::{ConsentStore, DataCategory};
+use mochios_device_consent::DataCategory;
 
 pub fn install(
     backend: &dyn Backend,
@@ -32,25 +32,11 @@ pub fn install(
     }
     backend.revalidate(&request.plan)?;
     let target = backend.install(&request.plan, progress)?;
-    if target.id != request.plan.target.id
-        || target.release != request.plan.release
-        || !target.mounted_root.is_absolute()
-        || target.mounted_root.parent().is_none()
-    {
+    if target.id != request.plan.target.id || target.release != request.plan.release {
         return Err("The installation provider did not verify the expected destination.".into());
     }
     progress(Progress::stage("Saving device privacy settings…"));
-    let store = ConsentStore::at_directory(target.mounted_root.join("var/config/privacy"));
-    store
-        .save(&request.consent)
-        .map_err(|e| format!("Device privacy settings could not be saved: {e}"))?;
-    if store
-        .load()
-        .map_err(|e| format!("Device privacy settings could not be verified: {e}"))?
-        != request.consent
-    {
-        return Err("Saved device privacy settings do not match the confirmed choices.".into());
-    }
+    backend.persist_consent(&target, &request.consent)?;
     backend.finalize(&target, progress)?;
     Ok(Receipt {
         target_id: target.id,

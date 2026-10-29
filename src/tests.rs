@@ -175,7 +175,7 @@ fn source_readonly_unknown_capacity_and_unidentified_media_are_not_destinations(
         assert!(Inventory::from_snapshot(snapshot).target(20).is_none());
     }
     assert!(
-        backend::NativeBackend
+        backend::NativeBackend::default()
             .prepare(i.target(20).unwrap(), "test-release")
             .is_err()
     );
@@ -259,7 +259,7 @@ impl Backend for TestBackend {
         Ok(VerifiedTarget {
             id: 20,
             release: "test-release".into(),
-            mounted_root: self.root.clone(),
+            mounted_root: Some(self.root.clone()),
         })
     }
     fn finalize(&self, _: &VerifiedTarget, _: &mut dyn FnMut(Progress)) -> Result<(), String> {
@@ -584,4 +584,32 @@ fn current_category_catalog_matches_the_shared_gate_and_contains_only_placeholde
             assert_eq!(documents.text(&field.file), "abcdef");
         }
     }
+}
+
+#[test]
+fn native_installation_stays_disabled_without_write_grants_or_runtime_overrides() {
+    let backend = backend::NativeBackend::default();
+    let inventory = inventory();
+    assert_eq!(
+        backend
+            .prepare(inventory.target(20).unwrap(), "test-release")
+            .unwrap_err(),
+        backend::PROVIDER_GAP
+    );
+    assert_eq!(
+        backend.revalidate(&plan()).unwrap_err(),
+        backend::PROVIDER_GAP
+    );
+    let mut progress = 0;
+    assert_eq!(
+        backend
+            .install(&plan(), &mut |_| progress += 1)
+            .unwrap_err(),
+        backend::PROVIDER_GAP
+    );
+    assert_eq!(progress, 0);
+    let manifest = include_str!("../manifest.toml");
+    assert!(!manifest.contains("\"device.storage"));
+    assert!(!manifest.contains("disk.img"));
+    assert!(!crate::native::INSTALLATION_ENABLED);
 }
